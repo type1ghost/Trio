@@ -10,6 +10,8 @@ jobs:
     timeout-minutes: 180
     env:
       CI: "true"
+      FL_SETUP_CI_KEYCHAIN_NAME: "trio_release_${{ forgejo.run_id }}_${{ forgejo.run_attempt }}"
+      FL_SETUP_CI_SET_DEFAULT_KEYCHAIN: "false"
       LANG: en_US.UTF-8
       LC_ALL: en_US.UTF-8
       GIT_TERMINAL_PROMPT: "0"
