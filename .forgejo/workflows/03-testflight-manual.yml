@@ -1,0 +1,75 @@
+name: 03 TestFlight - Trio (Manual Only)
+on:
+  workflow_dispatch:
+concurrency:
+  group: trio-testflight
+  cancel-in-progress: false
+jobs:
+  release:
+    runs-on: macos-ios
+    timeout-minutes: 180
+    env:
+      CI: "true"
+      LANG: en_US.UTF-8
+      LC_ALL: en_US.UTF-8
+      GIT_TERMINAL_PROMPT: "0"
+      GITHUB_WORKSPACE: ${{ forgejo.workspace }}
+      GITHUB_REPOSITORY_OWNER: ${{ forgejo.repository_owner }}
+      TEAMID: ${{ secrets.TEAMID }}
+      GH_PAT: ${{ secrets.GH_PAT }}
+      MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
+      MATCH_READONLY: "true"
+      FASTLANE_KEY_ID: ${{ secrets.FASTLANE_KEY_ID }}
+      FASTLANE_ISSUER_ID: ${{ secrets.FASTLANE_ISSUER_ID }}
+      FASTLANE_KEY: ${{ secrets.FASTLANE_KEY }}
+      GYM_WORKSPACE: Trio.xcworkspace
+    steps:
+      - name: Require manual release from expected branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${FORGEJO_EVENT_NAME:-}" = workflow_dispatch
+          test "${FORGEJO_REF_NAME:-}" = critical-alerts
+      - name: Check out critical-alerts
+        uses: https://github.com/actions/checkout@v4
+        with:
+          ref: critical-alerts
+          submodules: recursive
+          persist-credentials: false
+      - name: Verify signing inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${TEAMID:?Set TEAMID secret}"
+          : "${GH_PAT:?Set GH_PAT secret}"
+          : "${MATCH_PASSWORD:?Set MATCH_PASSWORD secret}"
+          : "${FASTLANE_KEY_ID:?Set FASTLANE_KEY_ID secret}"
+          : "${FASTLANE_ISSUER_ID:?Set FASTLANE_ISSUER_ID secret}"
+          : "${FASTLANE_KEY:?Set FASTLANE_KEY secret}"
+          printf "DEVELOPER_TEAM = %s\n" "$TEAMID" > ConfigOverride.xcconfig
+      - name: Install Fastlane locally
+        shell: bash
+        run: |
+          set -euo pipefail
+          bundle config set --local path vendor/bundle
+          bundle install --jobs 4 --retry 2
+      - name: Build signed Trio IPA
+        shell: bash
+        run: |
+          set -euo pipefail
+          bundle exec fastlane ios build_trio
+      - name: Check IPA exists
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s Trio.ipa
+      - name: Verify signed Critical Alerts entitlement
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/verify-critical-alerts.py Trio.ipa
+      - name: Upload Trio to TestFlight
+        shell: bash
+        run: |
+          set -euo pipefail
+          bundle exec fastlane ios release

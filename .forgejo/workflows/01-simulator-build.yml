@@ -1,0 +1,36 @@
+name: 01 Simulator Build - Trio
+on:
+  push:
+    branches: [critical-alerts]
+  pull_request:
+    branches: [critical-alerts]
+  workflow_dispatch:
+jobs:
+  simulator:
+    runs-on: macos-ios
+    timeout-minutes: 120
+    env:
+      CI: "true"
+    steps:
+      - name: Check out app
+        uses: https://github.com/actions/checkout@v4
+        with:
+          submodules: recursive
+          persist-credentials: false
+      - name: Check tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild -version
+          swift --version
+      - name: Build unsigned simulator app
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild \
+            -workspace Trio.xcworkspace \
+            -scheme Trio \
+            -configuration Debug \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath "$PWD/.build/DerivedData" \
+            CODE_SIGNING_ALLOWED=NO build

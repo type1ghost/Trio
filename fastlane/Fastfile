@@ -124,6 +124,7 @@ platform :ios do
     )
 
     gym(
+      workspace: "Trio.xcworkspace",
       export_method: "app-store",
       scheme: "Trio",
       output_name: "Trio.ipa",

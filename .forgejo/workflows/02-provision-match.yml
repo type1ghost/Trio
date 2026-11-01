@@ -1,0 +1,59 @@
+name: 02 Provision Apple Match - Trio (Manual)
+on:
+  workflow_dispatch:
+concurrency:
+  group: apple-match-provision
+  cancel-in-progress: false
+jobs:
+  provision:
+    runs-on: macos-ios
+    timeout-minutes: 120
+    env:
+      CI: "true"
+      LANG: en_US.UTF-8
+      LC_ALL: en_US.UTF-8
+      GIT_TERMINAL_PROMPT: "0"
+      GITHUB_WORKSPACE: ${{ forgejo.workspace }}
+      GITHUB_REPOSITORY_OWNER: ${{ forgejo.repository_owner }}
+      TEAMID: ${{ secrets.TEAMID }}
+      GH_PAT: ${{ secrets.GH_PAT }}
+      MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
+      MATCH_READONLY: "false"
+      FASTLANE_KEY_ID: ${{ secrets.FASTLANE_KEY_ID }}
+      FASTLANE_ISSUER_ID: ${{ secrets.FASTLANE_ISSUER_ID }}
+      FASTLANE_KEY: ${{ secrets.FASTLANE_KEY }}
+      GYM_WORKSPACE: Trio.xcworkspace
+    steps:
+      - name: Require manual invocation
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${FORGEJO_EVENT_NAME:-}" = workflow_dispatch
+      - name: Check out app
+        uses: https://github.com/actions/checkout@v4
+        with:
+          ref: critical-alerts
+          submodules: recursive
+          persist-credentials: false
+      - name: Prepare team config
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${TEAMID:?Set TEAMID secret}"
+          : "${GH_PAT:?Set GH_PAT secret}"
+          : "${MATCH_PASSWORD:?Set MATCH_PASSWORD secret}"
+          : "${FASTLANE_KEY_ID:?Set FASTLANE_KEY_ID secret}"
+          : "${FASTLANE_ISSUER_ID:?Set FASTLANE_ISSUER_ID secret}"
+          : "${FASTLANE_KEY:?Set FASTLANE_KEY secret}"
+          printf "DEVELOPER_TEAM = %s\n" "$TEAMID" > ConfigOverride.xcconfig
+      - name: Install Fastlane locally
+        shell: bash
+        run: |
+          set -euo pipefail
+          bundle config set --local path vendor/bundle
+          bundle install --jobs 4 --retry 2
+      - name: Generate or update App Store profiles in Match
+        shell: bash
+        run: |
+          set -euo pipefail
+          bundle exec fastlane ios certs

@@ -1,0 +1,57 @@
+name: 04 Review Upstream Trio dev (Manual)
+on:
+  workflow_dispatch:
+jobs:
+  review:
+    runs-on: macos-ios
+    timeout-minutes: 40
+    env:
+      FORGEJO_PUSH_TOKEN: ${{ secrets.FORGEJO_PUSH_TOKEN }}
+      FORGEJO_USER: gavin
+      GIT_TERMINAL_PROMPT: "0"
+    steps:
+      - name: Check out current custom branch
+        uses: https://github.com/actions/checkout@v4
+        with:
+          ref: critical-alerts
+          fetch-depth: 0
+          submodules: false
+          persist-credentials: false
+      - name: Create review branch from latest upstream dev
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${FORGEJO_PUSH_TOKEN:?Missing FORGEJO_PUSH_TOKEN}"
+          git config user.name "Forgejo CI"
+          git config user.email "forgejo-ci@users.noreply.invalid"
+          git remote add upstream https://github.com/nightscout/Trio.git
+          git fetch upstream dev
+          base="$(git rev-parse origin/critical-alerts)"
+          new_dev="$(git rev-parse upstream/dev)"
+          if git merge-base --is-ancestor "$new_dev" "$base"; then
+            echo 'Critical Alerts already contains current upstream dev.'
+            exit 0
+          fi
+          branch="review/upstream-dev-${new_dev:0:10}-${base:0:8}"
+          git switch -c "$branch" origin/critical-alerts
+          if ! git merge --no-ff --no-edit upstream/dev; then
+            echo 'Merge conflicts. Review manually on Mac; no branch was pushed.'
+            git merge --abort || true
+            exit 1
+          fi
+          askpass="$(mktemp)"
+          trap 'rm -f "$askpass"' EXIT
+          cat > "$askpass" <<'SH'
+          #!/bin/sh
+          case "$1" in
+            *Username*) printf '%s\n' "$FORGEJO_USER" ;;
+            *Password*) printf '%s\n' "$FORGEJO_PUSH_TOKEN" ;;
+            *) exit 1 ;;
+          esac
+          SH
+          chmod 700 "$askpass"
+          export GIT_ASKPASS="$askpass"
+          git -c credential.helper= push origin "HEAD:refs/heads/$branch"
+          echo "Review branch pushed: $branch"
+          echo 'Open Forgejo > Trio > Pull Requests > New Pull Request.'
+          echo 'Base: critical-alerts; compare: the review branch.'
