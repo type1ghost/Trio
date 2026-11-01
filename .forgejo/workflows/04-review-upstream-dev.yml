@@ -6,7 +6,7 @@ jobs:
     runs-on: macos-ios
     timeout-minutes: 40
     env:
-      FORGEJO_PUSH_TOKEN: ${{ secrets.FORGEJO_PUSH_TOKEN }}
+      FORGEJO_PUSH_TOKEN: ${{ secrets.TRIO_PUSH_TOKEN }}
       FORGEJO_USER: gavin
       GIT_TERMINAL_PROMPT: "0"
     steps:
