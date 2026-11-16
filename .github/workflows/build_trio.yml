@@ -257,20 +257,23 @@ jobs:
           echo 'SWIFT_ACTIVE_COMPILATION_CONDITIONS = $(inherited) DEV_BRANCH_WARNING_DISABLED' >> ConfigOverride.xcconfig
           echo "::warning::Development branch warning disabled for this build."
 
+      # Install Project Dependencies
+      - name: Install Project Dependencies
+        run: |
+          bundle config set --local path 'vendor/bundle'
+          bundle install
+
       # Patch Fastlane Match to not print tables
       - name: Patch Match Tables
         run: |
-          TABLE_PRINTER_PATH=$(ruby -e 'puts Gem::Specification.find_by_name("fastlane").gem_dir')/match/lib/match/table_printer.rb
+          TABLE_PRINTER_PATH=$(bundle exec ruby -e 'puts Gem::Specification.find_by_name("fastlane").gem_dir')/match/lib/match/table_printer.rb
+
           if [ -f "$TABLE_PRINTER_PATH" ]; then
             sed -i "" "/puts(Terminal::Table.new(params))/d" "$TABLE_PRINTER_PATH"
           else
             echo "table_printer.rb not found"
             exit 1
           fi
-
-      # Install project dependencies
-      - name: Install Project Dependencies
-        run: bundle install
 
       # Sync the GitHub runner clock with the Windows time server (workaround as suggested in https://github.com/actions/runner/issues/2996)
       - name: Sync clock
