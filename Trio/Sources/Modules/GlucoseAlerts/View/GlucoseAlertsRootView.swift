@@ -352,7 +352,8 @@ private enum AlarmEnumDescription {
     }
 }
 
-// Diagnostic UI only. Remove this test-only section before production.
+// Retained manual Critical Alert diagnostics. Tests use isolated simulated alerts
+// and must never be treated as proof that future real glucose alerts will fire.
 private struct CriticalAlertDiagnosticsSection: View {
     let resolver: Resolver
     @ObservedObject var store: GlucoseAlertsStore
@@ -381,7 +382,7 @@ private struct CriticalAlertDiagnosticsSection: View {
         } header: {
             Text("Critical Alert Diagnostics — TEST ONLY")
         } footer: {
-            Text("No glucose or insulin values change. Use the delayed test to lock your iPhone. Remove before production.")
+            Text("Manual test only. No glucose, pump or insulin values change. The 10-second test lets you check locked-screen delivery. This does not continuously monitor real alarms.")
         }
         .onAppear(perform: refreshPermission)
     }
