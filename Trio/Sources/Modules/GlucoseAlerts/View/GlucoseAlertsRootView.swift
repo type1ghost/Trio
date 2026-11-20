@@ -213,7 +213,9 @@ extension GlucoseAlerts {
                 if let message = note.userInfo?["error"] as? String {
                     diagnosticStatus = "Scheduling failed: \(message)"
                 } else {
-                    diagnosticStatus = "iOS accepted the test notification request. Listen for exactly one sound; scheduling success is not delivery proof."
+                    diagnosticStatus = diagnosticDelay > 0
+                        ? "iOS accepted the 10-second notification. Lock the iPhone now; verify one sound."
+                        : "iOS accepted the notification. Listen for exactly one sound; scheduling success is not delivery proof."
                 }
             }
         }
