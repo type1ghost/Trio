@@ -42,7 +42,12 @@ final class TrioUserNotificationAlertScheduler {
             AlertUserInfoKey.alertIdentifier.rawValue: alert.identifier.alertIdentifier
         ]
         content.interruptionLevel = alert.interruptionLevel.unNotificationLevel
-        content.sound = silenced ? nil : sound(for: alert, muted: muted, soundURL: soundURL)
+        // A critical interruption level can use the default critical sound
+        // when sound is nil. Request explicit zero-volume audio while AlarmKit
+        // is the audible channel so the native UN does not sound as well.
+        content.sound = silenced
+            ? (alert.interruptionLevel == .critical ? .defaultCriticalSound(withAudioVolume: 0) : nil)
+            : sound(for: alert, muted: muted, soundURL: soundURL)
         // Surface the four quick-snooze actions (15 min / 1 h / 3 h / 6 h)
         // on both phone and watch lock-screen notifications. The category +
         // its actions are registered by `NotificationCategoryFactory` on
