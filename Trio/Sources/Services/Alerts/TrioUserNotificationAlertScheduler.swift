@@ -2,6 +2,11 @@ import Foundation
 import LoopKit
 import UserNotifications
 
+extension Notification.Name {
+    static let trioCriticalAlertDiagnosticScheduleResult =
+        Notification.Name("Trio.criticalAlertDiagnostic.scheduleResult")
+}
+
 protocol TrioUserNotificationAlertResponder: AnyObject {
     func handleAcknowledgement(identifier: Alert.Identifier)
 }
@@ -24,10 +29,25 @@ final class TrioUserNotificationAlertScheduler {
             if let error = error {
                 warning(.alerts, "Scheduling alert notification \(alert.identifier.value) failed", error: error)
             }
+            // Report real notification scheduling errors only for temporary
+            // diagnostic alerts; this does not prove OS audio was delivered.
+            if BaseTrioAlertManager.isDiagnostic(alert.identifier) {
+                let identifier = request.identifier
+                let errorText = error?.localizedDescription
+                DispatchQueue.main.async {
+                    var details = ["identifier": identifier]
+                    if let errorText { details["error"] = errorText }
+                    NotificationCenter.default.post(
+                        name: .trioCriticalAlertDiagnosticScheduleResult,
+                        object: nil,
+                        userInfo: details
+                    )
+                }
+            }
         }
     }
 
-    func unschedule(identifier: Alert.Identifier) {
+        func unschedule(identifier: Alert.Identifier) {
         notificationCenter.removePendingNotificationRequests(withIdentifiers: [identifier.value])
         notificationCenter.removeDeliveredNotifications(withIdentifiers: [identifier.value])
     }
