@@ -252,7 +252,7 @@ extension GlucoseAlerts {
             let soundName = store.alerts.first(where: { $0.type == .urgentLow })?.soundFilename
                 ?? "critical.caf"
             let trigger: LoopKit.Alert.Trigger =
-                diagnosticDelay > 0 ? .delayed(diagnosticDelay) : .immediate
+                diagnosticDelay > 0 ? .delayed(interval: diagnosticDelay) : .immediate
             let alert = LoopKit.Alert(
                 identifier: identifier,
                 foregroundContent: contents,
