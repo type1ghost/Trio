@@ -352,134 +352,99 @@ private enum AlarmEnumDescription {
     }
 }
 
-// Temporary diagnostic UI, deliberately isolated from Glucose Alarms' main
-// SwiftUI view builder so its complexity does not affect clinical settings UI.
-// Remove this entire view and its call site before production deployment.
+// Diagnostic UI only. Remove this test-only section before production.
 private struct CriticalAlertDiagnosticsSection: View {
     let resolver: Resolver
     @ObservedObject var store: GlucoseAlertsStore
-    // Temporary test controls; remove before merging into production.
-    @State private var criticalPermissionStatus = "Checking…"
-    @State private var diagnosticStatus = "Not tested yet"
-    @State private var activeDiagnosticIdentifier: String?
-    @State private var showingDiagnosticConfirmation = false
-    @State private var diagnosticDelay: TimeInterval = 0
-    @State private var diagnosticInProgress = false
-
+    @State private var permissionStatus = "Checking"
+    @State private var testStatus = "Not tested"
 
     var body: some View {
         Section {
-            HStack {
-                Label("iOS Critical Alerts", systemImage: "bell.badge")
-                Spacer()
-                Text(criticalPermissionStatus)
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-            }
+            Text("iOS Critical Alerts: \(permissionStatus)")
 
             Button("Refresh Permission Status") {
-                refreshCriticalAlertPermission()
+                refreshPermission()
             }
 
             Button("Test Critical Alert Now") {
-                diagnosticDelay = 0
-                showingDiagnosticConfirmation = true
+                sendTest(delay: 0)
             }
-            .disabled(diagnosticInProgress)
 
             Button("Test Critical Alert in 10 Seconds") {
-                diagnosticDelay = 10
-                showingDiagnosticConfirmation = true
+                sendTest(delay: 10)
             }
-            .disabled(diagnosticInProgress)
 
-            Text(diagnosticStatus)
+            Text(testStatus)
                 .font(.footnote)
                 .foregroundStyle(.secondary)
         } header: {
             Text("Critical Alert Diagnostics — TEST ONLY")
         } footer: {
-            Text("Simulated notification only. Does not change glucose, insulin or pump settings. The 10-second test gives time to lock your iPhone. Remove before production.")
+            Text("No glucose or insulin values change. Use the delayed test to lock your iPhone. Remove before production.")
         }
-        .listRowBackground(Color.chart)
-        .confirmationDialog(
-            "Send a simulated Critical Alert?",
-            isPresented: $showingDiagnosticConfirmation,
-            titleVisibility: .visible
-        ) {
-            Button("Send Test Alert") { sendCriticalAlertDiagnostic() }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("This is a test, not a glucose emergency. It may play loudly through Silent Mode or Focus.")
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .trioCriticalAlertDiagnosticScheduleResult)) { note in
-            guard let identifier = note.userInfo?["identifier"] as? String,
-                  identifier == activeDiagnosticIdentifier
-            else { return }
-            if let message = note.userInfo?["error"] as? String {
-                diagnosticStatus = "Scheduling failed: \(message)"
-            } else {
-                diagnosticStatus = diagnosticDelay > 0
-                    ? "iOS accepted the 10-second notification. Lock the iPhone now; verify one sound."
-                    : "iOS accepted the notification. Listen for exactly one sound; scheduling success is not delivery proof."
-            }
-        }
+        .onAppear(perform: refreshPermission)
     }
 
-    private func refreshCriticalAlertPermission() {
+    private func refreshPermission() {
         UNUserNotificationCenter.current().getNotificationSettings { settings in
-            let description: String
+            let value: String
             switch settings.criticalAlertSetting {
-            case .enabled: description = "Enabled"
-            case .disabled: description = "Disabled"
-            case .notSupported: description = "Not available"
-            @unknown default: description = "Unknown"
+            case .enabled:
+                value = "Enabled"
+            case .disabled:
+                value = "Disabled"
+            case .notSupported:
+                value = "Not supported"
+            @unknown default:
+                value = "Unknown"
             }
             DispatchQueue.main.async {
-                criticalPermissionStatus = description
+                permissionStatus = value
             }
         }
     }
 
-    private func sendCriticalAlertDiagnostic() {
+    private func sendTest(delay: TimeInterval) {
         guard let manager = resolver.resolve(TrioAlertManager.self) else {
-            diagnosticStatus = "Could not resolve Trio's alert manager."
+            testStatus = "Cannot access Trio alert manager"
             return
         }
+
         let identifier = LoopKit.Alert.Identifier(
             managerIdentifier: BaseTrioAlertManager.diagnosticManagerIdentifier,
             alertIdentifier: "critical-test.\(UUID().uuidString)"
         )
-        let contents = LoopKit.Alert.Content(
+        let content = LoopKit.Alert.Content(
             title: "TEST ONLY — Critical Alert",
-            body: "Simulated notification. No glucose reading, pump action or insulin delivery was changed.",
+            body: "Simulated alarm; no glucose or insulin action has occurred.",
             acknowledgeActionButtonLabel: "Dismiss"
         )
         let soundName = store.alerts.first(where: { $0.type == .urgentLow })?.soundFilename
             ?? "critical.caf"
-        let trigger: LoopKit.Alert.Trigger =
-            diagnosticDelay > 0 ? .delayed(interval: diagnosticDelay) : .immediate
+        let trigger: LoopKit.Alert.Trigger
+        if delay > 0 {
+            trigger = .delayed(interval: delay)
+        } else {
+            trigger = .immediate
+        }
         let alert = LoopKit.Alert(
             identifier: identifier,
-            foregroundContent: contents,
-            backgroundContent: contents,
+            foregroundContent: content,
+            backgroundContent: content,
             trigger: trigger,
             interruptionLevel: .critical,
             sound: .sound(name: soundName)
         )
-        activeDiagnosticIdentifier = identifier.value
-        diagnosticStatus = diagnosticDelay > 0
-            ? "Scheduled for 10 seconds from now; lock the iPhone."
-            : "Submitting simulated Critical Alert…"
-        diagnosticInProgress = true
+
+        testStatus = delay > 0
+            ? "Test scheduled for 10 seconds. Lock your iPhone."
+            : "Test submitted. Listen for one sound."
         manager.issueAlert(alert)
 
-        // Always end the test after 45 seconds. Acknowledging earlier
-        // is also safe and never snoozes genuine alarms.
+        // Clear the isolated diagnostic alert without snoozing real alarms.
         DispatchQueue.main.asyncAfter(deadline: .now() + 45) {
             manager.retractAlert(identifier: identifier)
-            diagnosticInProgress = false
         }
     }
-
 }
