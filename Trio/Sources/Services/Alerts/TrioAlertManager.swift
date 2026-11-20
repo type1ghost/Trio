@@ -175,29 +175,53 @@ final class BaseTrioAlertManager: TrioAlertManager, Injectable {
         }
     }
 
-    /// Falls back to in-process AVAudioPlayer for `.critical` alerts on
-    /// builds without the Critical Alerts entitlement. iOS silently
-    /// downgrades `.criticalSoundNamed` and `.defaultCritical` to a regular
-    /// notification without the entitlement, which DnD / silent switch /
-    /// Focus modes then mute — dangerous for an overnight urgent-low.
-    /// `.playback` audio session bypasses those.
+    /// Use one audible channel for an eligible critical alert.
+    /// AlarmKit retains priority when its notification was deliberately silenced.
+    /// Otherwise, iOS's authorized native critical sound is sufficient: do not
+    /// also play the app's AVAudioPlayer volume-adjusted fallback.
     ///
-    /// Only fires for immediate-trigger alerts; delayed/repeating go
-    /// through UNNotification at fire time. No-op when muted or non-critical.
+    /// Without native Critical Alerts authorization, retain the existing
+    /// AlarmKit / in-process fallback so alarms are not silently dropped.
     private func playCriticalAudioFallbackIfNeeded(_ alert: Alert, muted: Bool) {
         guard alert.interruptionLevel == .critical, !muted else { return }
-        // Honor `playsSound: false` (alert was issued with sound: nil) —
-        // user explicitly opted out of audio on this alarm.
         guard let soundName = alert.sound?.filename else { return }
-        Task { @MainActor in
-            // AlarmKit pierces silent/Focus and survives app suspension.
-            if alarmScheduler == nil { alarmScheduler = CriticalAlertAlarmScheduler() }
-            let scheduled = alarmScheduler?.scheduleAlarm(for: alert) { [weak self] in
-                Task { @MainActor in self?.playAudioFallback(soundNamed: soundName, for: alert.identifier) }
-            } ?? false
-            guard !scheduled else { return }
-            // Fallback: in-process audio. Only sounds while Trio is running.
-            playAudioFallback(soundNamed: soundName, for: alert.identifier)
+
+        // issueAlert silences the UN sound when AlarmKit is already selected.
+        // Keep scheduling AlarmKit in that case, even if native critical
+        // notifications are also authorized.
+        if alarmKitAvailable {
+            Task { @MainActor [weak self] in
+                guard let self, self.isAlertActive(identifier: alert.identifier) else { return }
+                if self.alarmScheduler == nil { self.alarmScheduler = CriticalAlertAlarmScheduler() }
+                let scheduled = self.alarmScheduler?.scheduleAlarm(for: alert) { [weak self] in
+                    Task { @MainActor in
+                        self?.playAudioFallback(soundNamed: soundName, for: alert.identifier)
+                    }
+                } ?? false
+                guard !scheduled else { return }
+                self.playAudioFallback(soundNamed: soundName, for: alert.identifier)
+            }
+            return
+        }
+
+        // This is an asynchronous system setting, not an assumption based on
+        // an entitlement being present in the project's source plist.
+        UNUserNotificationCenter.current().getNotificationSettings { [weak self] settings in
+            guard settings.criticalAlertSetting != .enabled else {
+                debug(.alerts, "Native Critical Alerts authorized; skipping duplicate app audio")
+                return
+            }
+            Task { @MainActor [weak self] in
+                guard let self, self.isAlertActive(identifier: alert.identifier) else { return }
+                if self.alarmScheduler == nil { self.alarmScheduler = CriticalAlertAlarmScheduler() }
+                let scheduled = self.alarmScheduler?.scheduleAlarm(for: alert) { [weak self] in
+                    Task { @MainActor in
+                        self?.playAudioFallback(soundNamed: soundName, for: alert.identifier)
+                    }
+                } ?? false
+                guard !scheduled else { return }
+                self.playAudioFallback(soundNamed: soundName, for: alert.identifier)
+            }
         }
     }
 
