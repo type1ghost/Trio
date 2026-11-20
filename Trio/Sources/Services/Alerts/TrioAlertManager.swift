@@ -44,6 +44,13 @@ final class BaseTrioAlertManager: TrioAlertManager, Injectable {
     }
 
     static let managerIdentifier = "Trio"
+    /// Never use this manager identifier for genuine medical/device alarms.
+    static let diagnosticManagerIdentifier = "TrioDiagnostics"
+
+    static func isDiagnostic(_ identifier: Alert.Identifier) -> Bool {
+        identifier.managerIdentifier == diagnosticManagerIdentifier &&
+            identifier.alertIdentifier.hasPrefix("critical-test.")
+    }
     static let soundsDirectoryName = "Sounds"
 
     @Injected() private var alertHistoryStorage: AlertHistoryStorage!
@@ -292,12 +299,24 @@ final class BaseTrioAlertManager: TrioAlertManager, Injectable {
         queue.async {
             self.liveAlerts[effective.identifier] = effective
         }
-        recordIssued(effective)
+        // Keep simulated test alarms out of medical alert history.
+        if !Self.isDiagnostic(effective.identifier) {
+            recordIssued(effective)
+        }
         let muted = muter.shouldMute(at: now)
         modalScheduler.schedule(effective)
         // AlarmKit sounds critical alerts itself; posting the notification with
         // a sound too would play the tone twice, at once.
-        let alarmKitWillSound = alarmKitAvailable
+        // A delayed critical notification must retain its native sound.
+        // AlarmKit is scheduled by the immediate path; an app may be
+        // suspended before an in-process delayed timer fires.
+        let isImmediate: Bool
+        if case .immediate = effective.trigger {
+            isImmediate = true
+        } else {
+            isImmediate = false
+        }
+        let alarmKitWillSound = isImmediate && alarmKitAvailable
             && effective.interruptionLevel == .critical
             && effective.sound?.filename != nil
             && !muted
@@ -436,6 +455,12 @@ final class BaseTrioAlertManager: TrioAlertManager, Injectable {
         else { return }
         let identifier = Alert.Identifier(managerIdentifier: managerId, alertIdentifier: alertId)
 
+        // Dismissal of a simulated alert must not snooze real alarms.
+        if Self.isDiagnostic(identifier) {
+            handleAcknowledgement(identifier: identifier)
+            return
+        }
+
         // Clearing an alert is always a snooze, never a permanent dismissal:
         // the chosen duration if the user picked one, the quick 15 minutes for
         // a swipe, a tap or the OK button. The in-app banner already works
@@ -571,6 +596,10 @@ final class BaseTrioAlertManager: TrioAlertManager, Injectable {
 
 extension BaseTrioAlertManager: TrioModalAlertResponder, TrioUserNotificationAlertResponder {
     func requestSnooze(identifier: Alert.Identifier, duration: TimeInterval) {
+        if Self.isDiagnostic(identifier) {
+            handleAcknowledgement(identifier: identifier)
+            return
+        }
         // Dismissal is the user's response — full ack (history + device) first.
         handleAcknowledgement(identifier: identifier)
         let untilDate = duration > 0 ? Date().addingTimeInterval(duration) : .distantPast
