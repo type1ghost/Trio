@@ -47,7 +47,7 @@ final class TrioUserNotificationAlertScheduler {
         }
     }
 
-        func unschedule(identifier: Alert.Identifier) {
+    func unschedule(identifier: Alert.Identifier) {
         notificationCenter.removePendingNotificationRequests(withIdentifiers: [identifier.value])
         notificationCenter.removeDeliveredNotifications(withIdentifiers: [identifier.value])
     }
