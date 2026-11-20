@@ -44,11 +44,13 @@ final class BaseTrioAlertManager: TrioAlertManager, Injectable {
     }
 
     static let managerIdentifier = "Trio"
-    /// Never use this manager identifier for genuine medical/device alarms.
-    static let diagnosticManagerIdentifier = "TrioDiagnostics"
+    // Diagnostic IDs use Trio's sound namespace, so the test exercises
+    // the same bundled tone as genuine Trio glucose alerts. Their unique
+    // prefix still keeps them out of clinical history and global snooze.
+    static let diagnosticManagerIdentifier = managerIdentifier
 
     static func isDiagnostic(_ identifier: Alert.Identifier) -> Bool {
-        identifier.managerIdentifier == diagnosticManagerIdentifier &&
+        identifier.managerIdentifier == managerIdentifier &&
             identifier.alertIdentifier.hasPrefix("critical-test.")
     }
     static let soundsDirectoryName = "Sounds"
